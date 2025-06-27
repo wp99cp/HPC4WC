@@ -34,15 +34,16 @@ def laplacian(in_field: IJKField) -> IJKField:
 
 
 @gtx.field_operator
-def diffusion_defs(in_field: IJKField, alpha: gtx.float64) -> IJKField:
+def diffusion(in_field: IJKField, alpha: gtx.float64) -> IJKField:
     lap1 = laplacian(in_field)
     lap2 = laplacian(lap1)
     return in_field - alpha * lap2
 
 
 def update_halo(field: IJKField, num_halo: int):
-    # TODO consider upgrading to field syntax instead of operating on the ndarray
 
+    # Make sure to use field.ndarray here
+    
     # bottom edge (without corners)
     field.ndarray[num_halo:-num_halo, :num_halo] = field.ndarray[
         num_halo:-num_halo, -2 * num_halo : -num_halo
@@ -86,7 +87,6 @@ def apply_diffusion(
             alpha=alpha,
             out=out_field,
             domain=interior,
-            offset_provider={"_IOff": I, "_JOff": J},  # TODO fix GT4Py
         )
 
         if n < num_iter - 1:
@@ -123,14 +123,20 @@ def apply_diffusion(
 def main(nx, ny, nz, num_iter, num_halo=2, backend="None", plot_result=False):
     """Driver for apply_diffusion that sets up fields and does timings."""
 
-    assert 0 < nx <= 1024 * 1024, "You have to specify a reasonable value for nx"
-    assert 0 < ny <= 1024 * 1024, "You have to specify a reasonable value for ny"
-    assert 0 < nz <= 1024, "You have to specify a reasonable value for nz"
+    assert 0 < nx <= 1024 * 1024, (
+        "You have to specify a reasonable value for nx (0 < nx <= 1024*1024)"
+    )
+    assert 0 < ny <= 1024 * 1024, (
+        "You have to specify a reasonable value for ny (0 < ny <= 1024*1024)"
+    )
+    assert 0 < nz <= 1024, (
+        "You have to specify a reasonable value for nz (0 < nz <= 1024)"
+    )
     assert 0 < num_iter <= 1024 * 1024, (
-        "You have to specify a reasonable value for num_iter"
+        "You have to specify a reasonable value for num_iter (0 < num_iter <= 1024*1024)"
     )
     assert 2 <= num_halo <= 256, (
-        "You have to specify a reasonable number of halo points"
+        "You have to specify a reasonable number of halo points (2 < num_halo <= 256)"
     )
     assert backend in (
         "None",
@@ -142,7 +148,7 @@ def main(nx, ny, nz, num_iter, num_halo=2, backend="None", plot_result=False):
 
     alpha = 1.0 / 32.0
 
-    # default origin
+    # define domain
     field_domain = {
         I: (-num_halo, nx + num_halo),
         J: (-num_halo, ny + num_halo),
@@ -167,13 +173,13 @@ def main(nx, ny, nz, num_iter, num_halo=2, backend="None", plot_result=False):
     if plot_result:
         # plot initial field
         plt.ioff()
-        plt.imshow(in_field[:, :, 0], origin="lower")
+        plt.imshow(in_field.asnumpy()[:, :, in_field.shape[2] // 2], origin="lower")
         plt.colorbar()
         plt.savefig("in_field.png")
         plt.close()
 
     # select backend
-    diffusion_stencil = diffusion_defs.with_backend(actual_backend)
+    diffusion_stencil = diffusion.with_backend(actual_backend)
 
     # warmup caches
     apply_diffusion(diffusion_stencil, in_field, out_field, alpha, num_halo)
@@ -198,7 +204,7 @@ def main(nx, ny, nz, num_iter, num_halo=2, backend="None", plot_result=False):
     if plot_result:
         # plot the output field
         plt.ioff()
-        plt.imshow(out_field[:, :, 0], origin="lower")
+        plt.imshow(out_field.asnumpy()[:, :, out_field.shape[2] // 2], origin="lower")
         plt.colorbar()
         plt.savefig("out_field.png")
         plt.close()
